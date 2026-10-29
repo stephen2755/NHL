@@ -25,6 +25,9 @@ jobs:
           python-version: '3.12'
       - name: Download NHL data for browser-safe static hosting
         run: python scripts/fetch_nhl.py
+      - name: Fetch NHL injury statuses
+        continue-on-error: true
+        run: python scripts/fetch_injuries.py
       - name: Fetch Daily Faceoff goalie statuses (best effort)
         continue-on-error: true
         run: python scripts/fetch_goalies.py
