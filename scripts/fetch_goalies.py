@@ -67,16 +67,28 @@ def collect(day):
         if not match:
             print("DFO matchup not found:",heading)
             continue
-        # The two goalie cards occur immediately after the matchup header,
-        # each as a player name followed by its explicit status.
-        next_heading=re.search(r"\n[A-Za-z .'-]+ at [A-Za-z .'-]+\n",flat[match.end():])
+        next_heading=re.search(r"\\n[A-Za-z .'-]+ at [A-Za-z .'-]+\\n",flat[match.end():])
         chunk=flat[match.end():match.end()+(next_heading.start() if next_heading else 12000)]
-        pairs=re.findall(r"(?m)^([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ.\u0027’ -]{3,55})[ \t]*\n[ \t]*(Confirmed|Likely|Unconfirmed|Projected)[ \t]*(?:\n|$)",chunk)
-        picks=[{"name":name.strip(),"status":status} for name,status in pairs[:2]]
-        if len(picks)==2:
-            found[str(game.get("id"))]={"away":picks[0],"home":picks[1]}
+        # Validate the reported name against each team's NHL goalie roster.
+        def roster(code):
+            p=OUT/("goalie-stats-"+code+".json")
+            if not p.exists():return {}
+            try:
+                data=json.loads(p.read_text())
+                return {" ".join([x.get(k,{}).get("default","") if isinstance(x.get(k),dict) else x.get(k,"") for k in ("firstName","lastName")]).strip().casefold():x for x in data}
+            except Exception:return {}
+        pairs=re.findall(r"(?m)^([^\\n]{4,55})[ \\t]*\\n[ \\t]*(Confirmed|Likely|Unconfirmed|Projected)[ \\t]*(?:\\n|$)",chunk)
+        picks={}
+        for side,code in (("away",aa),("home",hh)):
+            known=roster(code)
+            for name,status in pairs:
+                if name.strip().casefold() in known:
+                    picks[side]={"name":name.strip(),"status":status,"source":"Daily Faceoff"}
+                    break
+        if picks:
+            found[str(game.get("id"))]=picks
         else:
-            print("DFO goalie cards not parsed:",heading,"pairs:",len(picks))
+            print("DFO goalie cards not roster-matched:",heading,"pairs:",pairs[:5])
     if not found:
         message="Daily Faceoff HTML loaded but no matchups parsed; first tokens: "+repr(tokens[:35])
         (OUT/("goalies-status-"+day+".json")).write_text(json.dumps({"ok":False,"error":message,"checked_at":datetime.now(timezone.utc).isoformat(),"source_url":url}))
