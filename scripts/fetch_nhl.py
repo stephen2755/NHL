@@ -37,3 +37,31 @@ print("Fetched", count, "score dates; standings:", standings is not None)
 if not count:
     raise SystemExit("NHL schedule unavailable; deployment stopped to preserve previous site")
 (ROOT / "status.json").write_text(json.dumps({"updated_at": datetime.now(timezone.utc).isoformat(), "dates": count, "standings": standings is not None}))
+
+# Season skater totals for approximate player goal projections.
+# Fetch only teams appearing on upcoming cards, and retain cached team files
+# when a transient NHL API failure occurs.
+teams = set()
+for offset in range(0, 15):
+    day = (today + timedelta(days=offset)).isoformat()
+    p = ROOT / (day + ".json")
+    if not p.exists():
+        continue
+    try:
+        games = json.loads(p.read_text()).get("games", [])
+        for game in games:
+            for side in ("homeTeam", "awayTeam"):
+                code = game.get(side, {}).get("abbrev", {})
+                if isinstance(code, dict):
+                    code = code.get("default")
+                if isinstance(code, str) and len(code) == 3:
+                    teams.add(code)
+    except (ValueError, OSError):
+        continue
+team_stats = {}
+for team in sorted(teams):
+    stats = get("/club-stats/" + team + "/now")
+    if stats and isinstance(stats.get("skaters"), list):
+        team_stats[team] = stats["skaters"]
+        (ROOT / ("skaters-" + team + ".json")).write_text(json.dumps(stats["skaters"]))
+print("Updated skater totals for", len(team_stats), "of", len(teams), "teams")
