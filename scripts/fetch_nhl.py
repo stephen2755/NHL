@@ -64,4 +64,6 @@ for team in sorted(teams):
     if stats and isinstance(stats.get("skaters"), list):
         team_stats[team] = stats["skaters"]
         (ROOT / ("skaters-" + team + ".json")).write_text(json.dumps(stats["skaters"]))
+        if isinstance(stats.get("goalies"), list):
+            (ROOT / ("goalie-stats-" + team + ".json")).write_text(json.dumps(stats["goalies"]))
 print("Updated skater totals for", len(team_stats), "of", len(teams), "teams")
