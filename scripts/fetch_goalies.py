@@ -44,7 +44,9 @@ def collect(day):
         with urllib.request.urlopen(req,timeout=20) as r:
             html=r.read().decode("utf-8","replace")
     except Exception as e:
-        print("Daily Faceoff unavailable",day,str(e))
+        message="Daily Faceoff fetch failed: "+str(e)
+        (OUT/("goalies-status-"+day+".json")).write_text(json.dumps({"ok":False,"error":message,"checked_at":datetime.now(timezone.utc).isoformat(),"source_url":url}))
+        print(message,day,flush=True)
         return
     p=TextParser()
     p.feed(html)
@@ -76,8 +78,12 @@ def collect(day):
         else:
             print("DFO goalie cards not parsed:",heading,"pairs:",len(picks))
     if not found:
-        raise RuntimeError("Daily Faceoff returned zero parsed goalie matchups; inspect HTML structure")
+        message="Daily Faceoff HTML loaded but no matchups parsed; first tokens: "+repr(tokens[:35])
+        (OUT/("goalies-status-"+day+".json")).write_text(json.dumps({"ok":False,"error":message,"checked_at":datetime.now(timezone.utc).isoformat(),"source_url":url}))
+        print(message,flush=True)
+        return
     (OUT/("goalies-"+day+".json")).write_text(json.dumps({"source":"Daily Faceoff","source_url":url,"fetched_at":datetime.now(timezone.utc).isoformat(),"games":found}))
+    (OUT/("goalies-status-"+day+".json")).write_text(json.dumps({"ok":True,"matched":len(found),"scheduled":len(games),"checked_at":datetime.now(timezone.utc).isoformat(),"source_url":url}))
     print("Daily Faceoff",day,len(found),"of",len(games),"matchups parsed")
 
 for delta in (0,1):
