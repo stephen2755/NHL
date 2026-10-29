@@ -38,7 +38,7 @@ def collect(day):
     if not schedule.exists():
         return
     games=json.loads(schedule.read_text()).get("games",[])
-    url="https://www.dailyfaceoff.com/starting-goalies/"+day
+    url="https://www.dailyfaceoff.com/starting-goalies/"+date.fromisoformat(day).strftime("%m-%d-%Y")
     req=urllib.request.Request(url,headers={"User-Agent":"Mozilla/5.0 (compatible; NHL research dashboard)","Accept":"text/html"})
     try:
         with urllib.request.urlopen(req,timeout=20) as r:
@@ -61,13 +61,15 @@ def collect(day):
         if isinstance(aa,dict):aa=aa.get("default","")
         if isinstance(hh,dict):hh=hh.get("default","")
         heading=names.get(aa,a)+" at "+names.get(hh,h)
-        try:
-            i=tokens.index(heading)
-        except ValueError:
+        # DFO text often separates matchup names and statuses into
+        # individual text nodes. Locate the heading, then read the next
+        # two goalie name/status pairs before the next matchup heading.
+        headings=[idx for idx,token in enumerate(tokens) if " at " in token and any(n in token for n in names.values())]
+        match=next((idx for idx in headings if heading.lower() in tokens[idx].lower()),None)
+        if match is None:
             continue
-        # Only read up to the next matchup, and capture first two status
-        # pairs. We require the player name immediately before the status.
-        chunk=tokens[i+1:i+110]
+        stop=next((idx for idx in headings if idx>match),len(tokens))
+        chunk=tokens[match+1:stop]
         picks=[]
         for j,t in enumerate(chunk):
             if t in STATUS and j>0:
