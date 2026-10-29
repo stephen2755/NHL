@@ -25,6 +25,8 @@ jobs:
           python-version: '3.12'
       - name: Download NHL data for browser-safe static hosting
         run: python scripts/fetch_nhl.py
+      - name: Walk-forward backtest (2025-26 regular season)
+        run: python scripts/backtest.py
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
