@@ -4,7 +4,7 @@ on:
     branches: [main]
   workflow_dispatch:
   schedule:
-    - cron: '17 */4 * * *'
+    - cron: '*/10 * * * *'
 permissions:
   contents: read
   pages: write
@@ -32,6 +32,7 @@ jobs:
         continue-on-error: true
         run: python scripts/fetch_goalies.py
       - name: Walk-forward backtest (2025-26 regular season)
+        if: github.event_name != 'schedule'
         continue-on-error: true
         run: python scripts/backtest.py
       - uses: actions/configure-pages@v5
