@@ -49,38 +49,34 @@ def collect(day):
     p=TextParser()
     p.feed(html)
     tokens=p.tokens
+    # Match each team's full matchup heading using normalized text. Some
+    # HTML renderers split the heading into several adjacent text nodes.
+    flat="\n".join(tokens)
+    names={"ANA":"Anaheim Ducks","BOS":"Boston Bruins","BUF":"Buffalo Sabres","CAR":"Carolina Hurricanes","CBJ":"Columbus Blue Jackets","CGY":"Calgary Flames","CHI":"Chicago Blackhawks","COL":"Colorado Avalanche","DAL":"Dallas Stars","DET":"Detroit Red Wings","EDM":"Edmonton Oilers","FLA":"Florida Panthers","LAK":"Los Angeles Kings","MIN":"Minnesota Wild","MTL":"Montreal Canadiens","NJD":"New Jersey Devils","NSH":"Nashville Predators","NYI":"New York Islanders","NYR":"New York Rangers","OTT":"Ottawa Senators","PHI":"Philadelphia Flyers","PIT":"Pittsburgh Penguins","SEA":"Seattle Kraken","SJS":"San Jose Sharks","STL":"St Louis Blues","TBL":"Tampa Bay Lightning","TOR":"Toronto Maple Leafs","UTA":"Utah Mammoth","VAN":"Vancouver Canucks","VGK":"Vegas Golden Knights","WPG":"Winnipeg Jets","WSH":"Washington Capitals"}
     found={}
     for game in games:
         away=game.get("awayTeam",{})
         home=game.get("homeTeam",{})
-        a=label(away);h=label(home)
-        # The score endpoint may not include full team names; use a local
-        # canonical NHL team-name lookup for matching.
-        names={"ANA":"Anaheim Ducks","BOS":"Boston Bruins","BUF":"Buffalo Sabres","CAR":"Carolina Hurricanes","CBJ":"Columbus Blue Jackets","CGY":"Calgary Flames","CHI":"Chicago Blackhawks","COL":"Colorado Avalanche","DAL":"Dallas Stars","DET":"Detroit Red Wings","EDM":"Edmonton Oilers","FLA":"Florida Panthers","LAK":"Los Angeles Kings","MIN":"Minnesota Wild","MTL":"Montreal Canadiens","NJD":"New Jersey Devils","NSH":"Nashville Predators","NYI":"New York Islanders","NYR":"New York Rangers","OTT":"Ottawa Senators","PHI":"Philadelphia Flyers","PIT":"Pittsburgh Penguins","SEA":"Seattle Kraken","SJS":"San Jose Sharks","STL":"St Louis Blues","TBL":"Tampa Bay Lightning","TOR":"Toronto Maple Leafs","UTA":"Utah Mammoth","VAN":"Vancouver Canucks","VGK":"Vegas Golden Knights","WPG":"Winnipeg Jets","WSH":"Washington Capitals"}
         aa=away.get("abbrev","");hh=home.get("abbrev","")
         if isinstance(aa,dict):aa=aa.get("default","")
         if isinstance(hh,dict):hh=hh.get("default","")
-        heading=names.get(aa,a)+" at "+names.get(hh,h)
-        # DFO text often separates matchup names and statuses into
-        # individual text nodes. Locate the heading, then read the next
-        # two goalie name/status pairs before the next matchup heading.
-        headings=[idx for idx,token in enumerate(tokens) if " at " in token and any(n in token for n in names.values())]
-        match=next((idx for idx in headings if heading.lower() in tokens[idx].lower()),None)
-        if match is None:
+        heading=names.get(aa,label(away))+" at "+names.get(hh,label(home))
+        match=re.search(re.escape(heading),flat,re.I)
+        if not match:
+            print("DFO matchup not found:",heading)
             continue
-        stop=next((idx for idx in headings if idx>match),len(tokens))
-        chunk=tokens[match+1:stop]
-        picks=[]
-        for j,t in enumerate(chunk):
-            if t in STATUS and j>0:
-                name=chunk[j-1]
-                if re.fullmatch(r"[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ.'’ -]{3,55}",name) and len(name.split())>=2:
-                    if not picks or picks[-1]["name"]!=name:
-                        picks.append({"name":name,"status":t})
-            if len(picks)>=2:
-                break
+        # The two goalie cards occur immediately after the matchup header,
+        # each as a player name followed by its explicit status.
+        next_heading=re.search(r"\n[A-Za-z .'-]+ at [A-Za-z .'-]+\n",flat[match.end():])
+        chunk=flat[match.end():match.end()+(next_heading.start() if next_heading else 12000)]
+        pairs=re.findall(r"(?m)^([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ.'’ -]{3,55})\s*\n(Confirmed|Likely|Unconfirmed|Projected)\s*(?:\n|$)",chunk)
+        picks=[{"name":name.strip(),"status":status} for name,status in pairs[:2]]
         if len(picks)==2:
             found[str(game.get("id"))]={"away":picks[0],"home":picks[1]}
+        else:
+            print("DFO goalie cards not parsed:",heading,"pairs:",len(picks))
+    if not found:
+        raise RuntimeError("Daily Faceoff returned zero parsed goalie matchups; inspect HTML structure")
     (OUT/("goalies-"+day+".json")).write_text(json.dumps({"source":"Daily Faceoff","source_url":url,"fetched_at":datetime.now(timezone.utc).isoformat(),"games":found}))
     print("Daily Faceoff",day,len(found),"of",len(games),"matchups parsed")
 
