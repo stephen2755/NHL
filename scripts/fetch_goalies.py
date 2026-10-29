@@ -63,11 +63,13 @@ def collect(day):
         if isinstance(aa,dict):aa=aa.get("default","")
         if isinstance(hh,dict):hh=hh.get("default","")
         heading=names.get(aa,label(away))+" at "+names.get(hh,label(home))
-        match=re.search(re.escape(heading),flat,re.I)
+        # DFO separates the team names and "at" into distinct HTML text nodes.
+        pattern=re.escape(names.get(aa,label(away)))+r"\s+at\s+"+re.escape(names.get(hh,label(home)))
+        match=re.search(pattern,flat,re.I)
         if not match:
             print("DFO matchup not found:",heading)
             continue
-        next_heading=re.search(r"\\n[A-Za-z .'-]+ at [A-Za-z .'-]+\\n",flat[match.end():])
+        next_heading=re.search(r"\n[A-Za-z .'-]+\nat\n[A-Za-z .'-]+\n",flat[match.end():])
         chunk=flat[match.end():match.end()+(next_heading.start() if next_heading else 12000)]
         # Validate the reported name against each team's NHL goalie roster.
         def roster(code):
@@ -77,7 +79,7 @@ def collect(day):
                 data=json.loads(p.read_text())
                 return {" ".join([x.get(k,{}).get("default","") if isinstance(x.get(k),dict) else x.get(k,"") for k in ("firstName","lastName")]).strip().casefold():x for x in data}
             except Exception:return {}
-        pairs=re.findall(r"(?m)^([^\\n]{4,55})[ \\t]*\\n[ \\t]*(Confirmed|Likely|Unconfirmed|Projected)[ \\t]*(?:\\n|$)",chunk)
+        pairs=re.findall(r"(?m)^([^\n]{4,55})[ \t]*\n[ \t]*(Confirmed|Likely|Unconfirmed|Projected)[ \t]*(?:\n|$)",chunk)
         picks={}
         for side,code in (("away",aa),("home",hh)):
             known=roster(code)
