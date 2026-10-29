@@ -32,3 +32,24 @@ async function renderAnalytics(){
  for(const id of ['analytics-search','analytics-team','analytics-situation','analytics-min'])document.querySelector('#'+id).addEventListener('input',update);
  document.querySelectorAll('[data-sort]').forEach(th=>th.addEventListener('click',()=>{const key=th.dataset.sort;analyticsDescending=analyticsSort===key?!analyticsDescending:!['name','team'].includes(key);analyticsSort=key;update()}));update();
 }
+
+/* Prior-season team shot-quality rates. Each skater's on-ice events are
+   divided by total skater on-ice time, avoiding summing overlapping events.
+   Rates are xG per 60 minutes of TEAM situation time, not per skater 60. */
+function historicalTeamXg(rows){
+ const teams={};for(const r of rows){
+ if(!['5on5','5on4','4on5'].includes(r.situation))continue;
+ const key=r.team,kind=r.situation,sec=Number(r.icetime)||0;
+ if(!key||sec<=0)continue;
+ const slot=(teams[key]??={})[kind]??={seconds:0,for:0,against:0};
+ slot.seconds+=sec;slot.for+=(Number(r.OnIce_F_xGoals)||0);slot.against+=(Number(r.OnIce_A_xGoals)||0);
+ }
+ for(const team of Object.values(teams))for(const [kind,v] of Object.entries(team)){
+ const skaters=kind==='4on5'?4:5;
+ const teamMinutes=v.seconds/60/skaters;
+ v.xgf60=teamMinutes>0?v.for/skaters*60/teamMinutes:0;
+ v.xga60=teamMinutes>0?v.against/skaters*60/teamMinutes:0;
+ v.teamMinutes=teamMinutes;
+ }
+ return teams;
+}
