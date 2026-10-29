@@ -69,7 +69,7 @@ def collect(day):
         # each as a player name followed by its explicit status.
         next_heading=re.search(r"\n[A-Za-z .'-]+ at [A-Za-z .'-]+\n",flat[match.end():])
         chunk=flat[match.end():match.end()+(next_heading.start() if next_heading else 12000)]
-        pairs=re.findall(r"(?m)^([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ.'’ -]{3,55})\s*\n(Confirmed|Likely|Unconfirmed|Projected)\s*(?:\n|$)",chunk)
+        pairs=re.findall(r"(?m)^([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ.\u0027’ -]{3,55})[ \t]*\n[ \t]*(Confirmed|Likely|Unconfirmed|Projected)[ \t]*(?:\n|$)",chunk)
         picks=[{"name":name.strip(),"status":status} for name,status in pairs[:2]]
         if len(picks)==2:
             found[str(game.get("id"))]={"away":picks[0],"home":picks[1]}
