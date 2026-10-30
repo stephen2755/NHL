@@ -126,19 +126,30 @@ async function renderDailyResults(){
   if(tab!=='results'||date!==selected)return;
   const finals=games.filter(g=>g.gameState==='OFF'||g.gameState==='FINAL');
   const scored=dailyResults?.games||{};
+  // Prefer the original archived pregame forecast, even when the daily results
+  // file was generated before the archive was persisted or omitted its join.
+  const forecastEntries=await Promise.all(games.filter(g=>g.gameState==='OFF'||g.gameState==='FINAL').map(async g=>{
+   const id=String(g.id);
+   try{
+    const response=await fetch('site-data/forecasts/'+encodeURIComponent(id)+'.json?ts='+Date.now());
+    if(response.ok){const snapshot=await response.json();return [id,snapshot];}
+   }catch(e){console.warn('Pregame archive unavailable for',id,e)}
+   return [id,null];
+  }));
+  const archives=Object.fromEntries(forecastEntries);
   root.innerHTML='<h2>Daily Results · '+esc(selected)+'</h2>'+
    '<p class="small">Final scores and actual scorers come from NHL boxscores. Historical projections are displayed only when a pregame forecast was saved. Percentages are estimated probabilities of scoring at least once, not betting odds.</p>'+
    (!finals.length?'<div class="card">No completed games for this date.</div>':
     finals.map(g=>{
      const id=String(g.id),a=ab(g.awayTeam?.abbrev),h=ab(g.homeTeam?.abbrev),result=scored[id];
-     const snapshot=result?.forecast;
+     const snapshot=archives[id]||result?.forecast;
      const playerRows=(result?.scorers||[]).map(p=>{
       const pred=snapshot?.players?.find(x=>String(x.playerId)===String(p.playerId));
       return '<tr><td>'+resultPlayerLabel(p)+'</td><td>'+resultTeamLabel(p.team)+'</td><td>'+Number(p.goals||0)+'</td><td>'+(pred?(100*pred.probability).toFixed(1)+'%':'—')+'</td><td>'+(pred?Number(pred.expected).toFixed(2):'—')+'</td></tr>';
      }).join('');
      const predictedNotScored=(snapshot?.players||[]).filter(p=>!(result?.scorers||[]).some(x=>String(x.playerId)===String(p.playerId))).sort((x,y)=>y.expected-x.expected).slice(0,5);
      return '<article class="card"><h3 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+resultTeamLabel(a)+' '+esc(g.awayTeam?.score)+' – '+esc(g.homeTeam?.score)+' '+resultTeamLabel(h)+'</h3>'+
-      (snapshot?'<p class="small">Pregame forecast saved '+esc(snapshot.saved_at||'before game')+' · projected '+Number(snapshot.awayGoals).toFixed(2)+' – '+Number(snapshot.homeGoals).toFixed(2)+' goals</p>':'<p class="small">No archived pregame forecast for this game. Historical probabilities are unavailable; current statistics are not used to reconstruct them.</p>')+
+      (snapshot?'<p class="small">Archived pregame forecast saved '+esc(snapshot.saved_at||'before game')+' · projected '+Number(snapshot.awayGoals).toFixed(2)+' – '+Number(snapshot.homeGoals).toFixed(2)+' goals</p>':'<p class="small">No archived pregame forecast for this game. Historical probabilities are unavailable; current statistics are not used to reconstruct them.</p>')+
       (result?.scorers?.length?'<h4>Actual goal scorers</h4><div class="analytics-table-wrap"><table class="analytics-table"><thead><tr><th>Player</th><th>Team</th><th>Goals</th><th>Pregame score probability</th><th>Pregame expected goals</th></tr></thead><tbody>'+playerRows+'</tbody></table></div>':result?'<p>No player goals recorded in the boxscore.</p>':'<p class="small">Boxscore details not available yet.</p>')+
       (predictedNotScored.length?'<details><summary>Top projected players who did not score</summary><div class="analytics-table-wrap"><table class="analytics-table"><tbody>'+predictedNotScored.map(p=>'<tr><td>'+resultPlayerLabel(p)+'</td><td>'+resultTeamLabel(p.team)+'</td><td>'+(100*p.probability).toFixed(1)+'%</td></tr>').join('')+'</tbody></table></div></details>':'')+'</article>';
     }).join(''));
