@@ -16,7 +16,7 @@ const context=vm.createContext({
  }
 });
 vm.runInContext(fs.readFileSync('analytics.js','utf8'),context);
-vm.runInContext(fs.readFileSync('app.js','utf8'),context);
+vm.runInContext(fs.readFileSync('app.js','utf8').replace(/load\(\);\s*$/, ''),context);
 (async()=>{
  const now=Date.now();let count=0;
  const dates=[...new Set(fs.readdirSync('site-data').filter(x=>/^\d{4}-\d{2}-\d{2}\.json$/.test(x)).map(x=>x.slice(0,10)))].sort();
