@@ -148,14 +148,14 @@ async function renderDailyResults(){
      const matchup=retrospective?model(g):null;
      const estimatedPlayers=matchup?[...playerRows(a,matchup.x,100).map(p=>({...p,team:a,probability:1-Math.exp(-p.expected)})),...playerRows(h,matchup.y,100).map(p=>({...p,team:h,probability:1-Math.exp(-p.expected)}))]:[];
      const availablePlayers=snapshot?.players||estimatedPlayers;
-     const playerRows=(result?.scorers||[]).map(p=>{
+     const scorerTableRows=(result?.scorers||[]).map(p=>{
       const pred=availablePlayers.find(x=>String(x.playerId)===String(p.playerId));
       return '<tr><td>'+resultPlayerLabel(p)+'</td><td>'+resultTeamLabel(p.team)+'</td><td>'+Number(p.goals||0)+'</td><td>'+(pred?(100*pred.probability).toFixed(1)+'%':'—')+'</td><td>'+(pred?Number(pred.expected).toFixed(2):'—')+'</td></tr>';
      }).join('');
      const predictedNotScored=availablePlayers.filter(p=>!(result?.scorers||[]).some(x=>String(x.playerId)===String(p.playerId))).sort((x,y)=>y.expected-x.expected).slice(0,5);
      return '<article class="card"><h3 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+resultTeamLabel(a)+' '+esc(g.awayTeam?.score)+' – '+esc(g.homeTeam?.score)+' '+resultTeamLabel(h)+'</h3>'+
       (snapshot?'<p class="small">Archived pregame forecast saved '+esc(snapshot.saved_at||'before game')+' · projected '+Number(snapshot.awayGoals).toFixed(2)+' – '+Number(snapshot.homeGoals).toFixed(2)+' goals</p>':'<p class="small">No archived pregame forecast exists. Figures below are retrospective estimates using current data, NOT the original pregame predictions.</p>')+
-      (result?.scorers?.length?'<h4>Actual goal scorers</h4><div class="analytics-table-wrap"><table class="analytics-table"><thead><tr><th>Player</th><th>Team</th><th>Goals</th><th>'+(retrospective?'Retrospective score estimate':'Pregame score probability')+'</th><th>'+(retrospective?'Retrospective expected goals':'Pregame expected goals')+'</th></tr></thead><tbody>'+playerRows+'</tbody></table></div>':result?'<p>No player goals recorded in the boxscore.</p>':'<p class="small">Boxscore details not available yet.</p>')+
+      (result?.scorers?.length?'<h4>Actual goal scorers</h4><div class="analytics-table-wrap"><table class="analytics-table"><thead><tr><th>Player</th><th>Team</th><th>Goals</th><th>'+(retrospective?'Retrospective score estimate':'Pregame score probability')+'</th><th>'+(retrospective?'Retrospective expected goals':'Pregame expected goals')+'</th></tr></thead><tbody>'+scorerTableRows+'</tbody></table></div>':result?'<p>No player goals recorded in the boxscore.</p>':'<p class="small">Boxscore details not available yet.</p>')+
       (predictedNotScored.length?'<details><summary>Top projected players who did not score</summary><div class="analytics-table-wrap"><table class="analytics-table"><tbody>'+predictedNotScored.map(p=>'<tr><td>'+resultPlayerLabel(p)+'</td><td>'+resultTeamLabel(p.team)+'</td><td>'+(100*p.probability).toFixed(1)+'%</td></tr>').join('')+'</tbody></table></div></details>':'')+'</article>';
     }).join(''));
  }catch(e){if(tab==='results'&&date===selected)root.innerHTML='<h2>Daily Results</h2><div class="card">Unable to load scorer results: '+esc(e.message)+'</div>'}
