@@ -114,3 +114,48 @@ for team in sorted(today_teams):
     recent[team] = {"games":min(5,len(completed)),"goals":totals}
 (ROOT / "recent-goals.json").write_text(json.dumps({"updated_at":datetime.now(timezone.utc).isoformat(),"teams":recent}))
 print("Recent five-game goal totals:",len(recent),"teams")
+
+# Daily results: final scores and scorer identities, sourced from NHL boxscores.
+# Forecasts are joined separately from immutable pregame snapshots when present.
+for offset in range(-7, 1):
+    day = (today + timedelta(days=offset)).isoformat()
+    source = ROOT / (day + ".json")
+    if not source.exists():
+        continue
+    data = json.loads(source.read_text())
+    finished = [g for g in data.get("games", []) if g.get("gameState") in ("OFF", "FINAL")]
+    results = {}
+    for game in finished:
+        game_id = str(game.get("id", ""))
+        if not game_id:
+            continue
+        box = get("/gamecenter/" + game_id + "/boxscore")
+        if not box or not box.get("playerByGameStats"):
+            continue
+        scorers = []
+        for side in ("awayTeam", "homeTeam"):
+            team = game.get(side, {}).get("abbrev", "")
+            if isinstance(team, dict):
+                team = team.get("default", "")
+            for position in ("forwards", "defense"):
+                for player in box["playerByGameStats"].get(side, {}).get(position, []):
+                    goals = int(player.get("goals", 0) or 0)
+                    if goals <= 0:
+                        continue
+                    name = player.get("name", {})
+                    if isinstance(name, dict):
+                        name = name.get("default", "")
+                    if not name:
+                        name = " ".join(str(player.get(k, "")) for k in ("firstName", "lastName")).strip()
+                    scorers.append({"playerId": str(player.get("playerId", "")),
+                                    "name": name, "team": team, "goals": goals})
+        archive = ROOT / "forecasts" / (game_id + ".json")
+        forecast = None
+        if archive.exists():
+            try:
+                forecast = json.loads(archive.read_text())
+            except (ValueError, OSError):
+                pass
+        results[game_id] = {"scorers": scorers, "forecast": forecast}
+    (ROOT / ("results-" + day + ".json")).write_text(json.dumps({"date": day, "games": results}))
+print("Updated daily scorer results")
