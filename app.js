@@ -60,7 +60,7 @@ function renderScorers(){
 }
 let dailyResults=null,dailyResultsDate='';
 function resultTeamLabel(team){return '<span style="display:inline-flex;align-items:center;gap:8px;white-space:nowrap">'+logoHtml(team,'team-logo-small')+'<span>'+esc(team)+'</span></span>'}
-function resultPlayerLabel(p){const id=String(p.playerId||'');const season=(new Date(date+'T12:00:00').getMonth()>=8?Number(date.slice(0,4)):Number(date.slice(0,4))-1);const url=id&&/^\\d+$/.test(id)?'https://assets.nhle.com/mugs/nhl/'+season+(season+1)+'/'+encodeURIComponent(p.team||'')+'/'+id+'.png':'';return '<span style="display:inline-flex;align-items:center;gap:9px;white-space:nowrap">'+(url?'<img src="'+url+'" alt="" loading="lazy" style="width:34px;height:34px;object-fit:cover;border-radius:50%;background:rgba(255,255,255,.09)" onerror="this.style.display=\\'none\\'">':'')+'<span>'+esc(p.name)+'</span></span>'}
+function resultPlayerLabel(p){const id=String(p.playerId||'');const year=Number(date.slice(0,4)),season=(Number(date.slice(5,7))>=9?year:year-1);const url=/^[0-9]+$/.test(id)?'https://assets.nhle.com/mugs/nhl/'+season+(season+1)+'/'+encodeURIComponent(p.team||'')+'/'+id+'.png':'';return '<span style="display:inline-flex;align-items:center;gap:9px;white-space:nowrap">'+(url?'<img src="'+url+'" alt="" loading="lazy" style="width:34px;height:34px;object-fit:cover;border-radius:50%;background:rgba(255,255,255,.09)" onerror="this.hidden=true">':'')+'<span>'+esc(p.name)+'</span></span>'}
 async function renderDailyResults(){
  const root=$('#content'),selected=date;
  root.innerHTML='<h2>Daily Results · '+esc(selected)+'</h2><p class="small">Loading final scores and goal scorers…</p>';
