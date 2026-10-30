@@ -107,13 +107,24 @@ for day in sorted({g["date"] for g in games}):
         history[g["away"]].append((g["actual_away"], g["actual_home"]))
         history[g["home"]].append((g["actual_home"], g["actual_away"]))
 
+def calibration(rows):
+    bins = []
+    for low in range(0, 100, 10):
+        group = [r for r in rows if low <= 100 * r["away_win_prob"] < low + 10]
+        if not group:
+            continue
+        bins.append({"range": f"{low}-{low + 10}%", "games": len(group),
+                     "predicted": round(sum(r["away_win_prob"] for r in group) / len(group), 4),
+                     "actual": round(sum(r["actual_away"] > r["actual_home"] for r in group) / len(group), 4)})
+    return bins
+
 report = {
     "season": SEASON, "generated_at": datetime.now(timezone.utc).isoformat(),
     "method": "Walk-forward, game-date grouped; each team needs 10 prior games; no same-day or future results.",
     "model": "Goals-for/against shrinkage with 10-game league-average prior and home ice",
     "games_found": len(games), "games_tested": len(tested),
     "model_metrics": summarize(tested), "baseline_metrics": summarize(baseline),
-    "last_10": tested[-10:],
+    "last_10": tested[-10:], "calibration": calibration(tested),
     "monthly": [{"month": month, "metrics": summarize([r for r in tested if r["date"].startswith(month)])} for month in sorted({r["date"][:7] for r in tested})],
 }
 (OUT / "backtest.json").write_text(json.dumps(report, separators=(",", ":")))
