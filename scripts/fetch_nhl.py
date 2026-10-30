@@ -60,6 +60,20 @@ for offset in range(0, 15):
         continue
 team_stats = {}
 for team in sorted(teams):
+    # Current NHL roster is distinct from season-to-date player statistics.
+    # Save IDs for strict roster membership checks in the browser.
+    roster = get("/roster/" + team + "/current")
+    if roster and any(isinstance(roster.get(k), list) for k in ("forwards", "defensemen", "goalies")):
+        ids = [str(p["id"]) for group in ("forwards", "defensemen", "goalies")
+               for p in roster.get(group, []) if p.get("id") is not None]
+        (ROOT / ("roster-" + team + ".json")).write_text(json.dumps({
+            "team": team, "playerIds": ids, "updated_at": datetime.now(timezone.utc).isoformat()
+        }))
+    else:
+        # Avoid retaining an obsolete roster when the API is unavailable.
+        (ROOT / ("roster-" + team + ".json")).write_text(json.dumps({
+            "team": team, "playerIds": [], "unavailable": True
+        }))
     stats = get("/club-stats/" + team + "/now")
     if stats and isinstance(stats.get("skaters"), list):
         team_stats[team] = stats["skaters"]
