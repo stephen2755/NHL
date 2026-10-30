@@ -31,7 +31,27 @@ function historicalScoringPrior(playerId){
  }
  return wsum?{rate:Math.max(.005,Math.min(1.2,rate/wsum)),games}:null;
 }
-function playerRows(team,teamGoals,limit=5){const rows=skaters[team]||[];const roster=rosters[team];const eligible=rows.filter(p=>(p.gamesPlayed||0)>0&&roster?.has(String(p.playerId||p.id||'')));const weighted=eligible.map(p=>{const gp=p.gamesPlayed||1,shots=p.shots||0,goals=p.goals||0;const currentRate=(shots/gp)*((goals+3)/(shots+30));const prior=historicalScoringPrior(p.playerId||p.id);const historyWeight=prior==null?0:Math.min(.6,30/(gp+30))*Math.min(1,prior.games/60);const rate=(1-historyWeight)*currentRate+historyWeight*(prior?.rate??currentRate);return {historyUsed:historyWeight>0,playerId:String(p.playerId||p.id||''),name:[p.firstName?.default||p.firstName||'',p.lastName?.default||p.lastName||''].join(' ').trim(),rate,shots,gp,seasonGoals:goals}}).filter(p=>p.name&&p.rate>0&&!injuryStatus(team,p.name)?.unavailable);const sum=weighted.reduce((a,p)=>a+p.rate,0);return weighted.map(p=>({...p,availability:injuryStatus(team,p.name),expected:sum?teamGoals*p.rate/sum:0})).sort((a,b)=>b.expected-a.expected).slice(0,limit)}
+function playerRows(team,teamGoals,limit=5){
+ const rows=skaters[team]||[],roster=rosters[team];
+ const eligible=rows.filter(p=>(p.gamesPlayed||0)>0&&roster?.has(String(p.playerId||p.id||'')));
+ const weighted=eligible.map(p=>{
+  const gp=p.gamesPlayed||1,shots=p.shots||0,goals=p.goals||0,assists=Number(p.assists||0);
+  const currentRate=(shots/gp)*((goals+3)/(shots+30));
+  const prior=historicalScoringPrior(p.playerId||p.id);
+  const historyWeight=prior==null?0:Math.min(.6,30/(gp+30))*Math.min(1,prior.games/60);
+  const rate=(1-historyWeight)*currentRate+historyWeight*(prior?.rate??currentRate);
+  const assistRate=(assists+0.35*12)/(gp+12);
+  return {historyUsed:historyWeight>0,playerId:String(p.playerId||p.id||''),name:[p.firstName?.default||p.firstName||'',p.lastName?.default||p.lastName||''].join(' ').trim(),rate,assistRate,shots,gp,seasonGoals:goals,seasonAssists:assists};
+ }).filter(p=>p.name&&p.rate>0&&!injuryStatus(team,p.name)?.unavailable);
+ const goalSum=weighted.reduce((a,p)=>a+p.rate,0),assistSum=weighted.reduce((a,p)=>a+p.assistRate,0);
+ return weighted.map(p=>{
+  const expected=goalSum?teamGoals*p.rate/goalSum:0;
+  // NHL goals generate up to two assists; 1.65 is an approximate team-level assumption.
+  const expectedAssists=assistSum?teamGoals*1.65*p.assistRate/assistSum:0;
+  const expectedPoints=expected+expectedAssists;
+  return {...p,availability:injuryStatus(team,p.name),expected,expectedAssists,expectedPoints,pointProbability:1-Math.exp(-expectedPoints)};
+ }).sort((a,b)=>b.expected-a.expected).slice(0,limit);
+}
 function playersHtml(m){return '<details style="margin-top:14px"><summary style="cursor:pointer;font-weight:650">Player goal projections (top 5 per team)</summary><div class="grid">'+[m.a,m.h].map((team,i)=>{const rows=playerRows(team,i?m.y:m.x);return '<div><h4>'+esc(team)+'</h4>'+(rows.length?rows.map(p=>'<div style="display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #30445c;padding:7px 0"><span>'+esc(p.name)+(recentGoals[team]?.goals?.[p.playerId]!=null?' <span class="small">· '+recentGoals[team].goals[p.playerId]+' goals in L5</span>':recentGoals[team]?' <span class="small">· 0 goals in L5</span>':'')+(p.availability?.uncertain?' <span style="color:#ffcc8a">('+esc(p.availability.status)+' — status uncertain)</span>':'')+(p.historyUsed?' <span class="small">· historical xG</span>':'')+'</span><span>'+p.expected.toFixed(2)+' goals · '+(100*(1-Math.exp(-p.expected))).toFixed(0)+'%</span></div>').join(''):'<p class="small">Current roster or skater data unavailable</p>')+'</div>'}).join('')+'</div><p class="small">Only players listed on the current NHL team roster are eligible; this does not verify tonight’s lineup. Unavailable injured players are excluded when a current injury report is available; day-to-day players are flagged and still included pending lineup confirmation. '+(injuries?'Injury report: '+esc(injuries.source)+' updated '+esc(new Date(injuries.fetched_at).toLocaleString())+'.':'Injury data unavailable — player availability has NOT been verified.')+' Estimated player goals are allocated from team projections using current-season shots and regressed shooting rates, with recency-weighted historical MoneyPuck xG and goals when available. Historical data has less influence for players with limited prior-season samples; player eligibility still requires a current NHL roster match. These are not shot-quality xG measurements. Scoring probabilities assume a Poisson distribution and do not yet account for confirmed lineups or goalie changes.</p></details>'}
 function renderAccuracy(){
  const root=$('#content'),b=backtest;
@@ -53,10 +73,10 @@ function renderScorers(){
   }
  }
  ranked.sort((a,b)=>b.expected-a.expected);
- root.innerHTML='<h2>Daily Goal Scorer Rankings</h2><p class="small">All eligible skaters from scheduled games on '+esc(date)+', ranked by estimated goals. This is a model estimate based on team projected goals, current-season scoring and historical MoneyPuck xG—not a direct player xG forecast. Scoring probability uses a Poisson approximation. Only current-roster players are included; tonight\'s lineup is not confirmed.</p>'+
+ root.innerHTML='<h2>Daily Goal Scorer Rankings</h2><p class="small">All eligible skaters from scheduled games on '+esc(date)+', ranked by estimated goals. This is a model estimate based on team projected goals, current-season scoring and historical MoneyPuck xG—not a direct player xG forecast. Scoring probability uses a Poisson approximation. Point estimates allocate an assumed 1.65 assists per team goal using regressed season assist rates; point probabilities use a Poisson approximation and are not yet validated. Only current-roster players are included; tonight\'s lineup is not confirmed.</p>'+
  (!ranked.length?'<div class="card">No eligible upcoming player projections for this date. Check the schedule and roster updates.</div>':
- '<div class="card"><div class="analytics-table-wrap"><table class="analytics-table scorer-table"><thead><tr><th>#</th><th>Player</th><th>Team</th><th>Opponent</th><th>Season goals</th><th>Expected goals</th><th>Score probability</th></tr></thead><tbody>'+
- ranked.map((p,i)=>'<tr><td class="scorer-rank">'+(i+1)+'</td><td class="scorer-player">'+resultPlayerLabel(p)+(p.availability?.uncertain?' <span class="small">('+esc(p.availability.status)+' — uncertain)</span>':'')+'</td><td class="scorer-team">'+resultTeamLabel(p.team)+'</td><td class="scorer-team">'+resultTeamLabel(p.opponent)+'</td><td>'+Number(p.seasonGoals||0)+'</td><td>'+p.expected.toFixed(3)+'</td><td>'+(p.probability*100).toFixed(1)+'%</td></tr>').join('')+'</tbody></table></div></div>');
+ '<div class="card"><div class="analytics-table-wrap"><table class="analytics-table scorer-table"><thead><tr><th>#</th><th>Player</th><th>Team</th><th>Opponent</th><th>Season goals</th><th>Expected goals</th><th>Score probability</th><th>Expected points</th><th>Point probability</th></tr></thead><tbody>'+
+ ranked.map((p,i)=>'<tr><td class="scorer-rank">'+(i+1)+'</td><td class="scorer-player">'+resultPlayerLabel(p)+(p.availability?.uncertain?' <span class="small">('+esc(p.availability.status)+' — uncertain)</span>':'')+'</td><td class="scorer-team">'+resultTeamLabel(p.team)+'</td><td class="scorer-team">'+resultTeamLabel(p.opponent)+'</td><td>'+Number(p.seasonGoals||0)+'</td><td>'+p.expected.toFixed(3)+'</td><td>'+(p.probability*100).toFixed(1)+'%</td><td>'+p.expectedPoints.toFixed(3)+'</td><td>'+(p.pointProbability*100).toFixed(1)+'%</td></tr>').join('')+'</tbody></table></div></div>');
 }
 let dailyResults=null,dailyResultsDate='';
 function resultTeamLabel(team){const t=String(team||'');return '<span style="display:inline-flex;align-items:center;gap:8px;white-space:nowrap"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:36px;height:36px;border-radius:50%;background:#24415e;font-size:10px;font-weight:700;position:relative;overflow:hidden">'+esc(t)+'<img src="'+logo(t)+'" alt="" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#172d46" onerror="this.remove()"></span><span>'+esc(t)+'</span></span>'}
