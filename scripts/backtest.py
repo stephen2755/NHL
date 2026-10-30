@@ -54,6 +54,24 @@ def predict(a, h, hist, shrink=.65, home_ice=.13):
     y = max(.5, LEAGUE + shrink * ((hgf - LEAGUE) + (aga - LEAGUE)) / 2 + home_ice)
     return x, y, probs(x, y)
 
+def predict_recent(a, h, hist):
+    """Challenger: blend season-long and last-ten game rates, all from prior dates."""
+    def rate(team):
+        rows = hist[team]
+        n = len(rows)
+        season_for = (sum(x[0] for x in rows) + 10 * LEAGUE) / (n + 10)
+        season_against = (sum(x[1] for x in rows) + 10 * LEAGUE) / (n + 10)
+        recent = rows[-10:]
+        recent_for = (sum(x[0] for x in recent) + 8 * LEAGUE) / (len(recent) + 8)
+        recent_against = (sum(x[1] for x in recent) + 8 * LEAGUE) / (len(recent) + 8)
+        return (.75 * season_for + .25 * recent_for,
+                .75 * season_against + .25 * recent_against)
+    agf, aga = rate(a)
+    hgf, hga = rate(h)
+    x = max(.5, LEAGUE + .65 * ((agf - LEAGUE) + (hga - LEAGUE)) / 2 - .13)
+    y = max(.5, LEAGUE + .65 * ((hgf - LEAGUE) + (aga - LEAGUE)) / 2 + .13)
+    return x, y, probs(x, y)
+
 def summarize(rows):
     if not rows:
         return None
@@ -93,6 +111,7 @@ games = sorted(all_games.values(), key=lambda g: (g["date"], g["id"]))
 history = defaultdict(list)
 tested = []
 baseline = []
+recent_challenger = []
 for day in sorted({g["date"] for g in games}):
     todays = [g for g in games if g["date"] == day]
     for g in todays:
@@ -101,6 +120,8 @@ for day in sorted({g["date"] for g in games}):
         if min(len(history[a]), len(history[h])) >= 10:
             x, y, p = predict(a, h, history)
             tested.append({**g, "pred_away": round(x, 4), "pred_home": round(y, 4), "away_win_prob": round(p, 5)})
+            rx, ry, rp = predict_recent(a, h, history)
+            recent_challenger.append({**g, "pred_away": round(rx, 4), "pred_home": round(ry, 4), "away_win_prob": round(rp, 5)})
             bx, by = LEAGUE - .13, LEAGUE + .13
             baseline.append({**g, "pred_away": bx, "pred_home": by, "away_win_prob": probs(bx, by)})
     for g in todays:
@@ -124,7 +145,12 @@ report = {
     "model": "Goals-for/against shrinkage with 10-game league-average prior and home ice",
     "games_found": len(games), "games_tested": len(tested),
     "model_metrics": summarize(tested), "baseline_metrics": summarize(baseline),
+    "recent_challenger_metrics": summarize(recent_challenger),
+    "recent_challenger_method": "75% season rates, 25% regressed last-10 rates; all prior games only",
     "last_10": tested[-10:], "calibration": calibration(tested),
+    "confidence_buckets": [{"range": label, "metrics": summarize([r for r in tested if lo <= max(r["away_win_prob"], 1-r["away_win_prob"]) < hi])}
+        for label, lo, hi in [("50-55%", .5, .55), ("55-60%", .55, .6), ("60-70%", .6, .7), ("70%+", .7, 1.01)]],
+    "recent_games": tested[-30:],
     "monthly": [{"month": month, "metrics": summarize([r for r in tested if r["date"].startswith(month)])} for month in sorted({r["date"][:7] for r in tested})],
 }
 (OUT / "backtest.json").write_text(json.dumps(report, separators=(",", ":")))
