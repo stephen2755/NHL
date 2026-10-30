@@ -2,11 +2,13 @@ name: Deploy NHL Daily Card
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'site-data/forecasts/**'
   workflow_dispatch:
   schedule:
     - cron: '*/10 * * * *'
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 concurrency:
@@ -35,6 +37,19 @@ jobs:
         if: github.event_name != 'schedule'
         continue-on-error: true
         run: python scripts/backtest.py
+      - name: Archive pregame forecasts from the live model
+        run: node scripts/archive_forecasts.js
+      - name: Persist immutable forecast snapshots
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add site-data/forecasts/
+          if ! git diff --cached --quiet; then
+            git commit -m "Archive pregame NHL projections [skip ci]"
+            git push
+          fi
+      - name: Refresh final-score and scorer comparisons with archived forecasts
+        run: python scripts/fetch_nhl.py
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
