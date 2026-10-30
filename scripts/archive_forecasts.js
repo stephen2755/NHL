@@ -22,14 +22,14 @@ vm.runInContext(fs.readFileSync('app.js','utf8').replace(/load\(\);\s*$/, ''),co
  const dates=[...new Set(fs.readdirSync('site-data').filter(x=>/^\d{4}-\d{2}-\d{2}\.json$/.test(x)).map(x=>x.slice(0,10)))].sort();
  for(const day of dates){
   const schedule=JSON.parse(fs.readFileSync(path.join(root,'site-data',day+'.json')));
-  const pending=(schedule.games||[]).filter(g=>g.id&&g.startTimeUTC&&Date.parse(g.startTimeUTC)>now+15*60000&&!fs.existsSync(path.join(out,g.id+'.json')));
+  const pending=(schedule.games||[]).filter(g=>g.id&&g.startTimeUTC&&Date.parse(g.startTimeUTC)>now+60*1000&&!fs.existsSync(path.join(out,g.id+'.json')));
   if(!pending.length)continue;
   el('#date').value=day;
   await vm.runInContext('load()',context);
   if(el('#status').className==='error'){console.warn('Skipping forecasts for',day,el('#status').textContent);continue;}
   for(const g of pending){
    const filename=path.join(out,g.id+'.json');
-   if(fs.existsSync(filename)||Date.parse(g.startTimeUTC)<=Date.now()+15*60000)continue;
+   if(fs.existsSync(filename)||Date.parse(g.startTimeUTC)<=Date.now()+60*1000)continue;
    context.__game=g;
    const forecast=vm.runInContext(`(()=>{
      const m=model(__game);if(!m)return null;
@@ -46,5 +46,15 @@ vm.runInContext(fs.readFileSync('app.js','utf8').replace(/load\(\);\s*$/, ''),co
    count++;
   }
  }
- console.log('Archived',count,'new pregame forecasts');
+ // Verify that every game still at least one minute from puck drop has an archive.
+ let missing=[];
+ for(const day of dates){
+  const schedule=JSON.parse(fs.readFileSync(path.join(root,'site-data',day+'.json')));
+  for(const g of schedule.games||[]){
+   if(g.id&&g.startTimeUTC&&Date.parse(g.startTimeUTC)>Date.now()+60*1000&&!fs.existsSync(path.join(out,g.id+'.json')))
+    missing.push(day+': '+g.id);
+  }
+ }
+ console.log('Archived',count,'new pregame forecasts; missing future archives:',missing.length);
+ if(missing.length){console.error('Missing pregame archives:',missing.slice(0,30).join(', '));process.exitCode=1;}
 })().catch(e=>{console.error(e);process.exitCode=1});
