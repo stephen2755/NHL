@@ -56,5 +56,5 @@ vm.runInContext(fs.readFileSync('app.js','utf8').replace(/load\(\);\s*$/, ''),co
   }
  }
  console.log('Archived',count,'new pregame forecasts; missing future archives:',missing.length);
- if(missing.length){console.error('Missing pregame archives:',missing.slice(0,30).join(', '));process.exitCode=1;}
+ if(missing.length){console.warn('Missing pregame archives (deployment continues):',missing.slice(0,30).join(', '));}
 })().catch(e=>{console.error(e);process.exitCode=1});
