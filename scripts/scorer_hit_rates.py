@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from datetime import datetime, timezone
 ROOT=Path("site-data")
-bins=[("0.00–0.19",0,.2),("0.20–0.29",.2,.3),("0.30–0.39",.3,.4),("0.40–0.49",.4,.5),("0.50–0.59",.5,.6),("0.60+",.6,float("inf")),("0.50+",.5,float("inf"))]
+bins=[("0.00–0.19",0,.2),("0.20–0.29",.2,.3),("0.30–0.39",.3,.4),("0.40–0.49",.4,.5),("0.50–0.59",.5,.6),("0.60+",.6,float("inf"))]
 buckets=[{"label":label,"players":0,"scored":0,"expectedHits":0.0,"expectedGoals":0.0,"actualGoals":0} for label,_,_ in bins]
 games_count=0
 for schedule_file in sorted(ROOT.glob("????-??-??.json")):
