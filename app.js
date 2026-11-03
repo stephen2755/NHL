@@ -200,13 +200,20 @@ function shotRowsForGame(g){
  }
  return rows;
 }
+let shotsTeamFilter='all';
 function renderPlayerShots(){
  const root=$('#content'),rows=games.filter(g=>g.gameState!=='OFF'&&g.gameState!=='FINAL').flatMap(shotRowsForGame);
  rows.sort((a,b)=>b.projected-a.projected);
+ const teams=[...new Set(rows.map(p=>p.team))].sort();
+ if(!teams.includes(shotsTeamFilter))shotsTeamFilter='all';
+ const visible=shotsTeamFilter==='all'?rows:rows.filter(p=>p.team===shotsTeamFilter);
+ const filterHtml='<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:14px 0"><label for="shots-team-filter" style="font-weight:650">Filter by team</label><select id="shots-team-filter" aria-label="Filter shots projections by team" style="padding:9px 12px;border-radius:8px;background:#172d46;color:#fff;border:1px solid #526980"><option value="all">All teams ('+rows.length+')</option>'+teams.map(t=>'<option value="'+esc(t)+'"'+(shotsTeamFilter===t?' selected':'')+'>'+esc(t)+'</option>').join('')+'</select><span class="small">Showing '+visible.length+' players</span></div>';
  root.innerHTML='<h2>Player Shots on Goal</h2><p class="small">Experimental nightly shots-on-goal projections for scheduled games. Current-season shots per game are blended with recency-weighted 2021–2024 historical player shooting rates where available (otherwise a 2.5-shot baseline), with a modest opponent shot-volume adjustment. Opponent shot volume is an offensive proxy, not verified shots allowed. Historical accuracy is available in the SOG Accuracy tab.</p>'+
- (!rows.length?'<div class="card">No upcoming games or eligible skater data available for this date.</div>':
+ filterHtml+(!rows.length?'<div class="card">No upcoming games or eligible skater data available for this date.</div>':
  '<div class="card"><div class="analytics-table-wrap"><table class="analytics-table scorer-table"><thead><tr><th>#</th><th>Player</th><th>Team</th><th>Opponent</th><th>Projected SOG</th><th>Season SOG/game</th><th>Games</th></tr></thead><tbody>'+
- rows.map((p,i)=>'<tr><td class="scorer-rank">'+(i+1)+'</td><td class="scorer-player">'+resultPlayerLabel(p)+'</td><td class="scorer-team">'+resultTeamLabel(p.team)+'</td><td class="scorer-team">'+resultTeamLabel(p.opponent)+'</td><td><strong>'+p.projected.toFixed(1)+'</strong></td><td>'+(p.shots/p.gp).toFixed(1)+'</td><td>'+p.gp+'</td></tr>').join('')+'</tbody></table></div></div>');
+ visible.map((p,i)=>'<tr><td class="scorer-rank">'+(i+1)+'</td><td class="scorer-player">'+resultPlayerLabel(p)+'</td><td class="scorer-team">'+resultTeamLabel(p.team)+'</td><td class="scorer-team">'+resultTeamLabel(p.opponent)+'</td><td><strong>'+p.projected.toFixed(1)+'</strong></td><td>'+(p.shots/p.gp).toFixed(1)+'</td><td>'+p.gp+'</td></tr>').join('')+'</tbody></table></div></div>');
+ const select=$('#shots-team-filter');
+ if(select)select.addEventListener('change',()=>{shotsTeamFilter=select.value;renderPlayerShots()});
 }
 async function renderShotsAccuracy(){
  const root=$('#content');
