@@ -160,6 +160,17 @@ async function renderDailyResults(){
     }).join(''));
  }catch(e){if(tab==='results'&&date===selected)root.innerHTML='<h2>Daily Results</h2><div class="card">Unable to load scorer results: '+esc(e.message)+'</div>'}
 }
+function historicalShotsPrior(playerId){
+ const rows=historicalPlayers?.[String(playerId)]||[];
+ let weightedShots=0,weightedGames=0;
+ for(const r of rows){
+  const gp=Number(r.gp),shots=Number(r.shots),season=Number(r.season);
+  if(!(gp>0)||!Number.isFinite(shots)||shots<0||!Number.isFinite(season))continue;
+  const weight=Math.pow(.7,2024-season);
+  weightedShots+=weight*shots;weightedGames+=weight*gp;
+ }
+ return weightedGames>=10?{rate:weightedShots/weightedGames,games:weightedGames}:null;
+}
 function shotRowsForGame(g){
  const rows=[];
  for(const [team,opponent] of [[ab(g.awayTeam?.abbrev),ab(g.homeTeam?.abbrev)],[ab(g.homeTeam?.abbrev),ab(g.awayTeam?.abbrev)]]){
@@ -172,7 +183,10 @@ function shotRowsForGame(g){
    const gp=Number(p.gamesPlayed),shots=Number(p.shots||0);
    const name=[p.firstName?.default||p.firstName||'',p.lastName?.default||p.lastName||''].join(' ').trim();
    if(!name||injuryStatus(team,name)?.unavailable)continue;
-   const perGame=(shots+2.5*8)/(gp+8);
+   const historical=historicalShotsPrior(p.playerId||p.id);
+    const priorRate=historical?Math.max(.2,Math.min(8,historical.rate)):2.5;
+    const priorGames=historical?Math.min(24,Math.max(8,historical.games*.35)):8;
+    const perGame=(shots+priorRate*priorGames)/(gp+priorGames);
    rows.push({playerId:String(p.playerId||p.id||''),name,team,opponent,gp,shots,projected:perGame*matchupFactor});
   }
  }
@@ -181,7 +195,7 @@ function shotRowsForGame(g){
 function renderPlayerShots(){
  const root=$('#content'),rows=games.filter(g=>g.gameState!=='OFF'&&g.gameState!=='FINAL').flatMap(shotRowsForGame);
  rows.sort((a,b)=>b.projected-a.projected);
- root.innerHTML='<h2>Player Shots on Goal</h2><p class="small">Experimental nightly shots-on-goal projections for scheduled games. Current-season shots per game are regressed toward 2.5 shots over eight games, with a modest opponent shot-volume adjustment. Opponent shot volume is an offensive proxy, not verified shots allowed. Historical accuracy is available in the SOG Accuracy tab.</p>'+
+ root.innerHTML='<h2>Player Shots on Goal</h2><p class="small">Experimental nightly shots-on-goal projections for scheduled games. Current-season shots per game are blended with recency-weighted 2021–2024 historical player shooting rates where available (otherwise a 2.5-shot baseline), with a modest opponent shot-volume adjustment. Opponent shot volume is an offensive proxy, not verified shots allowed. Historical accuracy is available in the SOG Accuracy tab.</p>'+
  (!rows.length?'<div class="card">No upcoming games or eligible skater data available for this date.</div>':
  '<div class="card"><div class="analytics-table-wrap"><table class="analytics-table"><thead><tr><th>Player</th><th>Team</th><th>Opponent</th><th>Projected SOG</th><th>Season SOG/game</th><th>Games</th></tr></thead><tbody>'+
  rows.map(p=>'<tr><td>'+esc(p.name)+'</td><td>'+esc(p.team)+'</td><td>'+esc(p.opponent)+'</td><td><strong>'+p.projected.toFixed(1)+'</strong></td><td>'+(p.shots/p.gp).toFixed(1)+'</td><td>'+p.gp+'</td></tr>').join('')+'</tbody></table></div></div>');
