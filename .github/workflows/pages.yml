@@ -59,6 +59,8 @@ jobs:
             git commit -m "Preserve NHL final boxscores and schedules [skip ci]"
             git push
           fi
+      - name: Audit historical pregame forecast coverage
+        run: python scripts/history_coverage.py
       - name: Calculate SOG projection accuracy
         run: python scripts/sog_accuracy.py
       - name: Calculate archived scorer hit rates
