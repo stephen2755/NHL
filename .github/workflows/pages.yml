@@ -50,6 +50,8 @@ jobs:
           fi
       - name: Refresh final-score and scorer comparisons with archived forecasts
         run: python scripts/fetch_nhl.py
+      - name: Calculate archived scorer hit rates
+        run: python scripts/scorer_hit_rates.py
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
