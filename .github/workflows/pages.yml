@@ -38,6 +38,7 @@ jobs:
         continue-on-error: true
         run: python scripts/backtest.py
       - name: Archive pregame forecasts from the live model
+        continue-on-error: true
         run: node scripts/archive_forecasts.js
       - name: Persist immutable forecast snapshots
         run: |
