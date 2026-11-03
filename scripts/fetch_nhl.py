@@ -133,6 +133,7 @@ for offset in range(-7, 1):
         if not box or not box.get("playerByGameStats"):
             continue
         scorers = []
+        player_shots = []
         for side in ("awayTeam", "homeTeam"):
             team = game.get(side, {}).get("abbrev", "")
             if isinstance(team, dict):
@@ -140,6 +141,8 @@ for offset in range(-7, 1):
             for position in ("forwards", "defense"):
                 for player in box["playerByGameStats"].get(side, {}).get(position, []):
                     goals = int(player.get("goals", 0) or 0)
+                    player_shots.append({"playerId": str(player.get("playerId", "")),
+                                         "shots": int(player.get("sog", player.get("shots", 0)) or 0)})
                     if goals <= 0:
                         continue
                     name = player.get("name", {})
@@ -156,6 +159,6 @@ for offset in range(-7, 1):
                 forecast = json.loads(archive.read_text())
             except (ValueError, OSError):
                 pass
-        results[game_id] = {"scorers": scorers, "forecast": forecast}
+        results[game_id] = {"scorers": scorers, "shots": player_shots, "forecast": forecast}
     (ROOT / ("results-" + day + ".json")).write_text(json.dumps({"date": day, "games": results}))
 print("Updated daily scorer results")
