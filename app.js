@@ -92,6 +92,7 @@ function renderGoalieProjections(){
  '<div class="card"><div class="analytics-table-wrap"><table class="analytics-table scorer-table"><thead><tr><th>Goalie</th><th>Team</th><th>Opponent</th><th>Starter status</th><th>Shots faced</th><th>Projected saves</th><th>Goals against</th><th>Save %</th></tr></thead><tbody>'+
  rows.map(r=>'<tr><td class="scorer-player">'+resultPlayerLabel({name:r.goalie.name,playerId:r.goalie.playerId,team:r.team})+'</td><td class="scorer-team">'+resultTeamLabel(r.team)+'</td><td class="scorer-team">'+resultTeamLabel(r.opponent)+'</td><td>'+esc(r.goalie.status||'Unconfirmed')+'</td><td>'+r.projectedShots.toFixed(1)+'</td><td>'+r.saves.toFixed(1)+'</td><td>'+r.goalsAgainst.toFixed(1)+'</td><td>'+(100*r.savePct).toFixed(1)+'%</td></tr>').join('')+'</tbody></table></div></div>');
 }
+const playerTeamFilters={scorers:'all',points:'all'};
 function renderPlayerRankings(kind){
  const points=kind==='points',root=$('#content'),ranked=[];
  for(const g of games){
@@ -104,13 +105,20 @@ function renderPlayerRankings(kind){
   }
  }
  ranked.sort((a,b)=>points?b.expectedPoints-a.expectedPoints:b.expected-a.expected);
+ const teams=[...new Set(ranked.map(p=>p.team))].sort();
+ const selected=teams.includes(playerTeamFilters[kind])?playerTeamFilters[kind]:'all';
+ playerTeamFilters[kind]=selected;
+ const visible=selected==='all'?ranked:ranked.filter(p=>p.team===selected);
+ const filterHtml='<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:14px 0"><label for="player-team-filter" style="font-weight:650">Filter by team</label><select id="player-team-filter" aria-label="Filter player projections by team" style="padding:9px 12px;border-radius:8px;background:#172d46;color:#fff;border:1px solid #526980"><option value="all">All teams ('+ranked.length+')</option>'+teams.map(t=>'<option value="'+esc(t)+'"'+(selected===t?' selected':'')+'>'+esc(t)+'</option>').join('')+'</select><span class="small">Showing '+visible.length+' players</span></div>';
  const intro=points?'All eligible skaters in upcoming games, ranked by estimated goals plus assists. Assists use regressed current-season assist rates and an assumed 1.65 assists per team goal. Point probabilities use a Poisson approximation; these experimental estimates have not been validated.':'All eligible skaters in upcoming games, ranked by estimated goals. Estimates allocate team projected goals using current-season scoring and historical MoneyPuck xG. Scoring probabilities use a Poisson approximation, not betting odds.';
  root.innerHTML='<h2>'+(points?'Daily Point Projections':'Daily Goal Scorer Rankings')+'</h2><p class="small">'+intro+' Only current-roster players are included; game-day lineups may be unconfirmed.</p>'+
- (!ranked.length?'<div class="card">No eligible upcoming player projections for this date. Check the schedule and roster updates.</div>':
+ filterHtml+(!ranked.length?'<div class="card">No eligible upcoming player projections for this date. Check the schedule and roster updates.</div>':
  '<div class="card"><div class="analytics-table-wrap"><table class="analytics-table scorer-table"><thead><tr><th>#</th><th>Player</th><th>Team</th><th>Opponent</th>'+
  (points?'<th>Season points</th><th>Expected points</th><th>Point probability</th>':'<th>Season goals</th><th>Expected goals</th><th>Score probability</th>')+'</tr></thead><tbody>'+
- ranked.map((p,i)=>'<tr><td class="scorer-rank">'+(i+1)+'</td><td class="scorer-player">'+resultPlayerLabel(p)+(p.availability?.uncertain?' <span class="small">('+esc(p.availability.status)+' — uncertain)</span>':'')+'</td><td class="scorer-team">'+resultTeamLabel(p.team)+'</td><td class="scorer-team">'+resultTeamLabel(p.opponent)+'</td>'+
+ visible.map((p,i)=>'<tr><td class="scorer-rank">'+(i+1)+'</td><td class="scorer-player">'+resultPlayerLabel(p)+(p.availability?.uncertain?' <span class="small">('+esc(p.availability.status)+' — uncertain)</span>':'')+'</td><td class="scorer-team">'+resultTeamLabel(p.team)+'</td><td class="scorer-team">'+resultTeamLabel(p.opponent)+'</td>'+
  (points?'<td>'+Number(p.seasonGoals+p.seasonAssists)+'</td><td>'+p.expectedPoints.toFixed(3)+'</td><td>'+(p.pointProbability*100).toFixed(1)+'%</td>':'<td>'+Number(p.seasonGoals)+'</td><td>'+p.expected.toFixed(3)+'</td><td>'+(p.probability*100).toFixed(1)+'%</td>')+'</tr>').join('')+'</tbody></table></div></div>');
+ const select=$('#player-team-filter');
+ if(select)select.addEventListener('change',()=>{playerTeamFilters[kind]=select.value;renderPlayerRankings(kind)});
 }
 let dailyResults=null,dailyResultsDate='';
 function resultTeamLabel(team){const t=String(team||'');return '<span style="display:inline-flex;align-items:center;gap:8px;white-space:nowrap"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:36px;height:36px;border-radius:50%;background:#24415e;font-size:10px;font-weight:700;position:relative;overflow:hidden">'+esc(t)+'<img src="'+logo(t)+'" alt="" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#172d46" onerror="this.remove()"></span><span>'+esc(t)+'</span></span>'}
