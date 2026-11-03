@@ -37,11 +37,12 @@ vm.runInContext(fs.readFileSync('app.js','utf8').replace(/load\(\);\s*$/, ''),co
        players:[...playerRows(m.a,m.x,100).map(p=>({...p,team:m.a})),
                 ...playerRows(m.h,m.y,100).map(p=>({...p,team:m.h}))].map(p=>({
          playerId:p.playerId,name:p.name,team:p.team,expected:p.expected,
-         probability:1-Math.exp(-p.expected)}))}
+         probability:1-Math.exp(-p.expected)})),
+       shots:shotRowsForGame(__game).map(p=>({playerId:p.playerId,name:p.name,team:p.team,opponent:p.opponent,projected:p.projected}))}
    })()`,context);
    if(!forecast||!forecast.players.length)continue;
    forecast.gameId=String(g.id);forecast.gameDate=day;
-   forecast.saved_at=new Date().toISOString();forecast.model='live-browser-v1';
+   forecast.saved_at=new Date().toISOString();forecast.model='live-browser-v2-sog';
    fs.writeFileSync(filename,JSON.stringify(forecast)+'\n',{flag:'wx'});
    count++;
   }
