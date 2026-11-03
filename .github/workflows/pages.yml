@@ -4,6 +4,8 @@ on:
     branches: [main]
     paths-ignore:
       - 'site-data/forecasts/**'
+      - 'site-data/results-*.json'
+      - 'site-data/????-??-??.json'
   workflow_dispatch:
   schedule:
     - cron: '*/10 * * * *'
@@ -51,6 +53,15 @@ jobs:
           fi
       - name: Refresh final-score and scorer comparisons with archived forecasts
         run: python scripts/fetch_nhl.py
+      - name: Preserve completed game results and schedules for long-term evaluation
+        run: |
+          git add site-data/results-*.json site-data/????-??-??.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Preserve NHL final boxscores and schedules [skip ci]"
+            git push
+          fi
+      - name: Calculate SOG projection accuracy
+        run: python scripts/sog_accuracy.py
       - name: Calculate archived scorer hit rates
         run: python scripts/scorer_hit_rates.py
       - uses: actions/configure-pages@v5
