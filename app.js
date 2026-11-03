@@ -160,30 +160,51 @@ async function renderDailyResults(){
     }).join(''));
  }catch(e){if(tab==='results'&&date===selected)root.innerHTML='<h2>Daily Results</h2><div class="card">Unable to load scorer results: '+esc(e.message)+'</div>'}
 }
-function renderPlayerShots(){
- const root=$('#content'),rows=[];
- for(const g of games){
-  if(g.gameState==='OFF'||g.gameState==='FINAL')continue;
-  for(const [team,opponent] of [[ab(g.awayTeam?.abbrev),ab(g.homeTeam?.abbrev)],[ab(g.homeTeam?.abbrev),ab(g.awayTeam?.abbrev)]]){
-   const roster=rosters[team];
-   const players=(skaters[team]||[]).filter(p=>Number(p.gamesPlayed)>0&&roster?.has(String(p.playerId||p.id||'')));
-   const opponentPlayers=(skaters[opponent]||[]).filter(p=>Number(p.gamesPlayed)>0&&rosters[opponent]?.has(String(p.playerId||p.id||'')));
-   const opponentShots=opponentPlayers.reduce((sum,p)=>sum+Number(p.shots||0)/Number(p.gamesPlayed),0);
-   const matchupFactor=opponentShots>15&&opponentShots<50?Math.max(.85,Math.min(1.15,30/opponentShots)):1;
-   for(const p of players){
-    const gp=Number(p.gamesPlayed),shots=Number(p.shots||0);
-    const name=[p.firstName?.default||p.firstName||'',p.lastName?.default||p.lastName||''].join(' ').trim();
-    if(!name||injuryStatus(team,name)?.unavailable)continue;
-    const perGame=(shots+2.5*8)/(gp+8);
-    rows.push({name,team,opponent,gp,shots,projected:perGame*matchupFactor});
-   }
+function shotRowsForGame(g){
+ const rows=[];
+ for(const [team,opponent] of [[ab(g.awayTeam?.abbrev),ab(g.homeTeam?.abbrev)],[ab(g.homeTeam?.abbrev),ab(g.awayTeam?.abbrev)]]){
+  const roster=rosters[team];
+  const players=(skaters[team]||[]).filter(p=>Number(p.gamesPlayed)>0&&roster?.has(String(p.playerId||p.id||'')));
+  const opponentPlayers=(skaters[opponent]||[]).filter(p=>Number(p.gamesPlayed)>0&&rosters[opponent]?.has(String(p.playerId||p.id||'')));
+  const opponentShots=opponentPlayers.reduce((sum,p)=>sum+Number(p.shots||0)/Number(p.gamesPlayed),0);
+  const matchupFactor=opponentShots>15&&opponentShots<50?Math.max(.85,Math.min(1.15,30/opponentShots)):1;
+  for(const p of players){
+   const gp=Number(p.gamesPlayed),shots=Number(p.shots||0);
+   const name=[p.firstName?.default||p.firstName||'',p.lastName?.default||p.lastName||''].join(' ').trim();
+   if(!name||injuryStatus(team,name)?.unavailable)continue;
+   const perGame=(shots+2.5*8)/(gp+8);
+   rows.push({playerId:String(p.playerId||p.id||''),name,team,opponent,gp,shots,projected:perGame*matchupFactor});
   }
  }
+ return rows;
+}
+function renderPlayerShots(){
+ const root=$('#content'),rows=games.filter(g=>g.gameState!=='OFF'&&g.gameState!=='FINAL').flatMap(shotRowsForGame);
  rows.sort((a,b)=>b.projected-a.projected);
- root.innerHTML='<h2>Player Shots on Goal</h2><p class="small">Experimental nightly shots-on-goal projections for scheduled games. Current-season shots per game are regressed toward 2.5 shots over eight games, with a modest opponent shot-volume adjustment. Opponent shot volume is an offensive proxy, not verified shots allowed. These projections are not yet backtested.</p>'+
+ root.innerHTML='<h2>Player Shots on Goal</h2><p class="small">Experimental nightly shots-on-goal projections for scheduled games. Current-season shots per game are regressed toward 2.5 shots over eight games, with a modest opponent shot-volume adjustment. Opponent shot volume is an offensive proxy, not verified shots allowed. Historical accuracy is available in the SOG Accuracy tab.</p>'+
  (!rows.length?'<div class="card">No upcoming games or eligible skater data available for this date.</div>':
  '<div class="card"><div class="analytics-table-wrap"><table class="analytics-table"><thead><tr><th>Player</th><th>Team</th><th>Opponent</th><th>Projected SOG</th><th>Season SOG/game</th><th>Games</th></tr></thead><tbody>'+
  rows.map(p=>'<tr><td>'+esc(p.name)+'</td><td>'+esc(p.team)+'</td><td>'+esc(p.opponent)+'</td><td><strong>'+p.projected.toFixed(1)+'</strong></td><td>'+(p.shots/p.gp).toFixed(1)+'</td><td>'+p.gp+'</td></tr>').join('')+'</tbody></table></div></div>');
+}
+async function renderShotsAccuracy(){
+ const root=$('#content');
+ root.innerHTML='<h2>SOG Projection Accuracy</h2><p class="small">Loading completed-game comparisons…</p>';
+ try{
+  const response=await fetch('site-data/sog-accuracy.json?ts='+Date.now());
+  if(!response.ok)throw Error('SOG accuracy summary has not been published yet');
+  const data=await response.json();
+  if(tab!=='shotsaccuracy')return;
+  const pct=(a,b)=>b?(100*a/b).toFixed(1)+'%':'—';
+  const n=v=>Number(v||0).toFixed(2);
+  root.innerHTML='<h2>SOG Projection Accuracy</h2>'+
+   '<p class="small">Uses only forecasts saved before puck drop and actual NHL boxscore shots on goal. Players who did not appear in a game are excluded. All ranges are mutually exclusive; no retrospective forecasts are counted.</p>'+
+   '<div class="card"><h3>'+Number(data.games||0)+' archived games · '+Number(data.playerGames||0)+' player-games</h3>'+
+   '<p>Mean absolute error: <strong>'+(data.playerGames?n(data.absoluteError/data.playerGames):'—')+' shots</strong> · Mean signed error (actual minus projected): <strong>'+(data.playerGames?n(data.signedError/data.playerGames):'—')+' shots</strong></p>'+
+   (!data.games?'<p>No qualifying pregame SOG archives with completed boxscores yet.</p>':'')+
+   '<div class="analytics-table-wrap"><table class="analytics-table"><thead><tr><th>Projected SOG</th><th>Player-games</th><th>Average projected</th><th>Average actual</th><th>MAE</th><th>Within ±1 shot</th></tr></thead><tbody>'+
+   (data.bins||[]).map(b=>'<tr><td>'+esc(b.label)+'</td><td>'+b.players+'</td><td>'+(b.players?n(b.projected/b.players):'—')+'</td><td>'+(b.players?n(b.actual/b.players):'—')+'</td><td>'+(b.players?n(b.absoluteError/b.players):'—')+'</td><td>'+pct(b.withinOne,b.players)+'</td></tr>').join('')+
+   '</tbody></table></div><p class="small">MAE = average absolute difference between projected and actual SOG. Within ±1 uses a maximum error of one shot. Larger samples provide more reliable assessments.</p></div>';
+ }catch(e){if(tab==='shotsaccuracy')root.innerHTML='<h2>SOG Projection Accuracy</h2><div class="card">'+esc(e.message)+'</div>'}
 }
 async function renderScorerAccuracy(){
  const root=$('#content');
@@ -203,7 +224,7 @@ async function renderScorerAccuracy(){
    '</tbody></table></div><p class="small">Each range is exclusive. Small samples can fluctuate substantially. A difference near zero suggests better calibration, not guaranteed accuracy.</p></div>';
  }catch(e){if(tab==='accuracy')root.innerHTML='<h2>Goal Scorer Hit Rates</h2><div class="card">'+esc(e.message)+'</div>'}
 }
-function render(){if(tab==='shots'){renderPlayerShots();return}if(tab==='accuracy'){renderScorerAccuracy();return}if(tab==='goalies'){renderGoalieProjections();return}if(tab==='scorers'||tab==='points'){renderPlayerRankings(tab);return}if(tab==='backtest'){renderBacktest();return}const root=$('#content');if(tab==='about'){root.innerHTML='<div class="card"><h2>Method · Baseline v0.1</h2><p>Season-to-date goals for and against, shrunk toward a league scoring baseline, with a small home-ice adjustment. Poisson goal distributions produce approximate win probabilities. Overtime ties are split equally. Player expected-goals estimates allocate the team forecast across skaters using shots and regressed shooting percentage; these are not shot-quality xG. This is a preliminary baseline, not the planned shot-quality xG, goalie, roster and backtested model.</p><p>Next milestones: historical SportsDataverse ingestion, walk-forward validation, goalie confirmations, xG features, player goal probabilities, and archived daily forecasts.</p></div>';return}if(tab==='results'){renderDailyResults();return}root.innerHTML='<h2>Daily game card</h2>'+(!games.length?'<p>No NHL games scheduled for this date.</p>':games.map(g=>{const m=model(g),a=esc(ab(g.awayTeam?.abbrev)),h=esc(ab(g.homeTeam?.abbrev));return '<article class="card matchup"><div class="game-time">'+esc(g.startTimeUTC?new Date(g.startTimeUTC).toLocaleString():g.gameState)+'</div><div class="matchup-heading">'+logoHtml(a,'team-logo-small')+'<h3>'+a+' <span class="versus">@</span> '+h+'</h3>'+logoHtml(h,'team-logo-small')+'</div>'+(!m?'<p>Insufficient current-season team data for baseline projection.</p>':'<div class="teams"><div class="team">'+logoHtml(a,'team-logo')+'<div class="team-name">'+a+'</div><div class="score">'+m.scoreA+'</div><div class="small">'+m.x.toFixed(2)+' expected goals</div></div><div class="team">'+logoHtml(h,'team-logo')+'<div class="team-name">'+h+'</div><div class="score">'+m.scoreH+'</div><div class="small">'+m.y.toFixed(2)+' expected goals</div></div></div><p>Projected total: <strong>'+(m.x+m.y).toFixed(2)+'</strong> · '+a+' win probability: <strong>'+(100*m.aw).toFixed(1)+'%</strong></p><div class="meter"><span style="width:'+(100*m.aw).toFixed(1)+'%"></span></div><div class="small">Experimental projection · Goalie estimates shown below; confirmed lineup status may be unavailable</div>'+goalieHtml(m)+playersHtml(m))+(g.gameState==='OFF'||g.gameState==='FINAL'?'<p>Final: '+esc(g.awayTeam?.score)+' – '+esc(g.homeTeam?.score)+'</p>':'')+'</article>'}).join(''))}async function load(){date=$('#date').value;$('#status').className='';$('#status').textContent='Loading published NHL data…';try{const [s,r,meta,bt,ir,rg]=await Promise.all([fetch('site-data/'+date+'.json?ts='+Date.now()),fetch('site-data/standings.json?ts='+Date.now()),fetch('site-data/status.json?ts='+Date.now()),fetch('site-data/backtest.json?ts='+Date.now()).catch(()=>null),fetch('site-data/injuries.json?ts='+Date.now()).catch(()=>null),fetch('site-data/recent-goals.json?ts='+Date.now()).catch(()=>null)]);recentGoals=rg&&rg.ok?(await rg.json()).teams||{}:{};injuries=ir&&ir.ok?await ir.json():null;if(bt&&bt.ok){backtest=await bt.json()}if(!s.ok)throw Error('This date is not in the published schedule yet. Choose a date within roughly 7 days before or 14 days after today.');if(!r.ok)throw Error('Standings data is not yet published. Check the latest GitHub Actions deployment.');const schedule=await s.json(),st=await r.json();try{if(!teamXgPrior){const csv=await fetch('skaters.csv');if(csv.ok)teamXgPrior=historicalTeamXg(parseSkaterCsv(await csv.text()));}}catch(err){console.warn('Historical xG prior unavailable',err)}try{const mp=await fetch('site-data/moneypuck-goalie-priors-2022-2026.json');if(mp.ok){const prior=await mp.json();moneypuckGoalies=prior.goalies||{}}}catch(e){console.warn('MoneyPuck goalie priors unavailable',e)}
+function render(){if(tab==='shotsaccuracy'){renderShotsAccuracy();return}if(tab==='shots'){renderPlayerShots();return}if(tab==='accuracy'){renderScorerAccuracy();return}if(tab==='goalies'){renderGoalieProjections();return}if(tab==='scorers'||tab==='points'){renderPlayerRankings(tab);return}if(tab==='backtest'){renderBacktest();return}const root=$('#content');if(tab==='about'){root.innerHTML='<div class="card"><h2>Method · Baseline v0.1</h2><p>Season-to-date goals for and against, shrunk toward a league scoring baseline, with a small home-ice adjustment. Poisson goal distributions produce approximate win probabilities. Overtime ties are split equally. Player expected-goals estimates allocate the team forecast across skaters using shots and regressed shooting percentage; these are not shot-quality xG. This is a preliminary baseline, not the planned shot-quality xG, goalie, roster and backtested model.</p><p>Next milestones: historical SportsDataverse ingestion, walk-forward validation, goalie confirmations, xG features, player goal probabilities, and archived daily forecasts.</p></div>';return}if(tab==='results'){renderDailyResults();return}root.innerHTML='<h2>Daily game card</h2>'+(!games.length?'<p>No NHL games scheduled for this date.</p>':games.map(g=>{const m=model(g),a=esc(ab(g.awayTeam?.abbrev)),h=esc(ab(g.homeTeam?.abbrev));return '<article class="card matchup"><div class="game-time">'+esc(g.startTimeUTC?new Date(g.startTimeUTC).toLocaleString():g.gameState)+'</div><div class="matchup-heading">'+logoHtml(a,'team-logo-small')+'<h3>'+a+' <span class="versus">@</span> '+h+'</h3>'+logoHtml(h,'team-logo-small')+'</div>'+(!m?'<p>Insufficient current-season team data for baseline projection.</p>':'<div class="teams"><div class="team">'+logoHtml(a,'team-logo')+'<div class="team-name">'+a+'</div><div class="score">'+m.scoreA+'</div><div class="small">'+m.x.toFixed(2)+' expected goals</div></div><div class="team">'+logoHtml(h,'team-logo')+'<div class="team-name">'+h+'</div><div class="score">'+m.scoreH+'</div><div class="small">'+m.y.toFixed(2)+' expected goals</div></div></div><p>Projected total: <strong>'+(m.x+m.y).toFixed(2)+'</strong> · '+a+' win probability: <strong>'+(100*m.aw).toFixed(1)+'%</strong></p><div class="meter"><span style="width:'+(100*m.aw).toFixed(1)+'%"></span></div><div class="small">Experimental projection · Goalie estimates shown below; confirmed lineup status may be unavailable</div>'+goalieHtml(m)+playersHtml(m))+(g.gameState==='OFF'||g.gameState==='FINAL'?'<p>Final: '+esc(g.awayTeam?.score)+' – '+esc(g.homeTeam?.score)+'</p>':'')+'</article>'}).join(''))}async function load(){date=$('#date').value;$('#status').className='';$('#status').textContent='Loading published NHL data…';try{const [s,r,meta,bt,ir,rg]=await Promise.all([fetch('site-data/'+date+'.json?ts='+Date.now()),fetch('site-data/standings.json?ts='+Date.now()),fetch('site-data/status.json?ts='+Date.now()),fetch('site-data/backtest.json?ts='+Date.now()).catch(()=>null),fetch('site-data/injuries.json?ts='+Date.now()).catch(()=>null),fetch('site-data/recent-goals.json?ts='+Date.now()).catch(()=>null)]);recentGoals=rg&&rg.ok?(await rg.json()).teams||{}:{};injuries=ir&&ir.ok?await ir.json():null;if(bt&&bt.ok){backtest=await bt.json()}if(!s.ok)throw Error('This date is not in the published schedule yet. Choose a date within roughly 7 days before or 14 days after today.');if(!r.ok)throw Error('Standings data is not yet published. Check the latest GitHub Actions deployment.');const schedule=await s.json(),st=await r.json();try{if(!teamXgPrior){const csv=await fetch('skaters.csv');if(csv.ok)teamXgPrior=historicalTeamXg(parseSkaterCsv(await csv.text()));}}catch(err){console.warn('Historical xG prior unavailable',err)}try{const mp=await fetch('site-data/moneypuck-goalie-priors-2022-2026.json');if(mp.ok){const prior=await mp.json();moneypuckGoalies=prior.goalies||{}}}catch(e){console.warn('MoneyPuck goalie priors unavailable',e)}
 if(!historicalPlayers){try{
  const hist=await fetch('historical-skaters-2021-2024.json');
  if(hist.ok){const data=await hist.json();historicalPlayers={};for(const p of data.players||[])(historicalPlayers[String(p.id)]??=[]).push(p);}
